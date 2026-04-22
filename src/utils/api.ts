@@ -52,7 +52,8 @@ type LangOverride = 'vi' | 'en'
 
 async function requestJson<T>(path: string, init: RequestInit, signal?: AbortSignal, langOverride?: LangOverride): Promise<T> {
   const lang = langOverride ?? getAdminLang()
-  const url = new URL(`${API_BASE_URL}${path}`, window.location.origin)
+  const base = API_BASE_URL.trim() ? API_BASE_URL.trim() : window.location.origin
+  const url = new URL(path, base)
   url.searchParams.set('lang', lang)
 
   const res = await fetch(url.toString(), {
