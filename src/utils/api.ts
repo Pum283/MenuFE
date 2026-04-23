@@ -67,7 +67,14 @@ async function requestJson<T>(path: string, init: RequestInit, signal?: AbortSig
   })
 
   const text = await res.text()
-  const payload = text ? (JSON.parse(text) as unknown) : undefined
+  let payload: unknown = undefined
+  if (text) {
+    try {
+      payload = JSON.parse(text) as unknown
+    } catch {
+      payload = text
+    }
+  }
 
   if (!res.ok) {
     const message =
@@ -77,7 +84,9 @@ async function requestJson<T>(path: string, init: RequestInit, signal?: AbortSig
               (payload as { error?: unknown; message?: unknown }).message ??
               'Request failed') as unknown,
           )
-        : `Request failed (${res.status})`
+        : typeof payload === 'string' && payload.trim()
+          ? payload
+          : `Request failed (${res.status})`
     throw new ApiError(message, res.status, payload)
   }
 
@@ -102,6 +111,21 @@ export async function getCafes(signal?: AbortSignal): Promise<CafeDto[]> {
 
 export async function getCafesByLang(lang: LangOverride, signal?: AbortSignal): Promise<CafeDto[]> {
   return await requestJson<CafeDto[]>('/api/admincafes', { method: 'GET' }, signal, lang)
+}
+
+/**
+ * Brand: danh sách quán được gán cho user hiện tại.
+ *
+ * Backend contract (đồng bộ với pattern hiện có):
+ * - GET /api/brandcafes?lang=vi|en
+ * - Response: CafeDto[]
+ */
+export async function getBrandCafes(signal?: AbortSignal): Promise<CafeDto[]> {
+  return await requestJson<CafeDto[]>('/api/brandcafes', { method: 'GET' }, signal)
+}
+
+export async function getBrandCafesByLang(lang: LangOverride, signal?: AbortSignal): Promise<CafeDto[]> {
+  return await requestJson<CafeDto[]>('/api/brandcafes', { method: 'GET' }, signal, lang)
 }
 
 export async function createCafe(body: UpsertCafeRequest, signal?: AbortSignal): Promise<CafeDto> {

@@ -366,97 +366,196 @@ export function UsersPage() {
             </Button>
           </div>
         </div>
-        <Table
-          header={
-            <tr>
-              <Th>Email</Th>
-              <Th>Roles</Th>
-              <Th>Quán quản lý</Th>
-              <Th>Trạng thái</Th>
-              <Th className="text-right">Hành động</Th>
-            </tr>
-          }
-        >
+        <div className="md:hidden">
           {rows.length === 0 ? (
-            <tr>
-              <Td colSpan={5}>Chưa có user.</Td>
-            </tr>
-          ) : null}
-
-          {rows.map((r) => (
-            <tr key={r.id} className="hover:bg-[rgb(var(--fe-surface))]">
-              <Td>{r.email}</Td>
-              <Td>{r.roles.join(', ')}</Td>
-              <Td>
-                {r.cafeMemberships.filter((m) => m.status === 'active').length ? (
-                  <div className="text-sm font-semibold text-[rgb(var(--fe-text))]">
-                    {r.cafeMemberships
-                      .filter((m) => m.status === 'active')
-                      .map((m) => m.cafeName)
-                      .join(', ')}
-                  </div>
-                ) : (
-                  <div className="text-sm font-semibold text-[rgb(var(--fe-muted))]">Không có quán</div>
-                )}
-              </Td>
-              <Td>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={!Boolean(blockedByUserId[r.id])}
-                    disabled={isSubmitting}
-                    onClick={async () => {
-                      setIsSubmitting(true)
-                      try {
-                        const nextIsBlocked = !Boolean(blockedByUserId[r.id])
-                        await adminBlockUser(r.id, { isBlocked: nextIsBlocked, reason: null })
-                        setBlockedByUserId((prev) => ({ ...prev, [r.id]: nextIsBlocked }))
-                        toast.success('Cập nhật trạng thái user thành công.')
-                      } catch (err) {
-                        toast.error(err instanceof Error ? err.message : 'Cập nhật trạng thái thất bại')
-                      } finally {
-                        setIsSubmitting(false)
-                      }
-                    }}
-                    className={[
-                      'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors',
-                      blockedByUserId[r.id]
-                        ? 'border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))]'
-                        : 'border-[rgb(var(--fe-success))] bg-[rgb(var(--fe-success))]',
-                      isSubmitting ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-                    ].join(' ')}
-                  >
-                    <span
-                      aria-hidden="true"
+            <div className="rounded-(--fe-radius) border border-[rgb(var(--fe-line))] bg-white p-4 text-sm font-semibold text-[rgb(var(--fe-muted))]">
+              Chưa có user.
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {rows.map((r) => (
+                <div key={r.id} className="rounded-(--fe-radius) border border-[rgb(var(--fe-line))] bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-[rgb(var(--fe-text))]">{r.email}</div>
+                      <div className="mt-1 truncate text-xs font-semibold text-[rgb(var(--fe-muted))]">{r.roles.join(', ')}</div>
+                    </div>
+                    <div
                       className={[
-                        'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
-                        blockedByUserId[r.id] ? 'translate-x-1' : 'translate-x-6',
+                        'shrink-0 rounded-[calc(var(--fe-radius)+999px)] border px-3 py-1 text-xs font-semibold',
+                        blockedByUserId[r.id]
+                          ? 'border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))] text-[rgb(var(--fe-muted))]'
+                          : 'border-[rgb(var(--fe-success))] bg-[rgba(var(--fe-success),0.10)] text-[rgb(var(--fe-success))]',
                       ].join(' ')}
-                    />
-                  </button>
+                    >
+                      {blockedByUserId[r.id] ? 'Blocked' : 'Active'}
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-[rgb(var(--fe-muted))]">Quán quản lý</div>
+                    {r.cafeMemberships.filter((m) => m.status === 'active').length ? (
+                      <div className="mt-1 text-sm font-semibold text-[rgb(var(--fe-text))]">
+                        {r.cafeMemberships
+                          .filter((m) => m.status === 'active')
+                          .map((m) => m.cafeName)
+                          .join(', ')}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-sm font-semibold text-[rgb(var(--fe-muted))]">Không có quán</div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!Boolean(blockedByUserId[r.id])}
+                      disabled={isSubmitting}
+                      onClick={async () => {
+                        setIsSubmitting(true)
+                        try {
+                          const nextIsBlocked = !Boolean(blockedByUserId[r.id])
+                          await adminBlockUser(r.id, { isBlocked: nextIsBlocked, reason: null })
+                          setBlockedByUserId((prev) => ({ ...prev, [r.id]: nextIsBlocked }))
+                          toast.success('Cập nhật trạng thái user thành công.')
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Cập nhật trạng thái thất bại')
+                        } finally {
+                          setIsSubmitting(false)
+                        }
+                      }}
+                      className={[
+                        'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors',
+                        blockedByUserId[r.id]
+                          ? 'border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))]'
+                          : 'border-[rgb(var(--fe-success))] bg-[rgb(var(--fe-success))]',
+                        isSubmitting ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                      ].join(' ')}
+                      aria-label="Trạng thái"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={[
+                          'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
+                          blockedByUserId[r.id] ? 'translate-x-1' : 'translate-x-6',
+                        ].join(' ')}
+                      />
+                    </button>
+
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isSubmitting || cafes.length === 0}
+                      onClick={async () => {
+                        setAssignUserId(r.id)
+                        setAssignCafeIds(savedCafeIdsByUserId[r.id] ?? [])
+                        setIsAssignModalOpen(true)
+                        setAssignCafeQuery('')
+                      }}
+                    >
+                      Gán thêm quán
+                    </Button>
+                  </div>
                 </div>
-              </Td>
-              <Td className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={isSubmitting || cafes.length === 0}
-                    onClick={async () => {
-                      setAssignUserId(r.id)
-                      setAssignCafeIds(savedCafeIdsByUserId[r.id] ?? [])
-                      setIsAssignModalOpen(true)
-                      setAssignCafeQuery('')
-                    }}
-                  >
-                    Gán thêm quán
-                  </Button>
-                </div>
-              </Td>
-            </tr>
-          ))}
-        </Table>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden md:block">
+          <Table
+            header={
+              <tr>
+                <Th>Email</Th>
+                <Th>Roles</Th>
+                <Th>Quán quản lý</Th>
+                <Th>Trạng thái</Th>
+                <Th className="text-right">Hành động</Th>
+              </tr>
+            }
+          >
+            {rows.length === 0 ? (
+              <tr>
+                <Td colSpan={5}>Chưa có user.</Td>
+              </tr>
+            ) : null}
+
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-[rgb(var(--fe-surface))]">
+                <Td>{r.email}</Td>
+                <Td>{r.roles.join(', ')}</Td>
+                <Td>
+                  {r.cafeMemberships.filter((m) => m.status === 'active').length ? (
+                    <div className="text-sm font-semibold text-[rgb(var(--fe-text))]">
+                      {r.cafeMemberships
+                        .filter((m) => m.status === 'active')
+                        .map((m) => m.cafeName)
+                        .join(', ')}
+                    </div>
+                  ) : (
+                    <div className="text-sm font-semibold text-[rgb(var(--fe-muted))]">Không có quán</div>
+                  )}
+                </Td>
+                <Td>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!Boolean(blockedByUserId[r.id])}
+                      disabled={isSubmitting}
+                      onClick={async () => {
+                        setIsSubmitting(true)
+                        try {
+                          const nextIsBlocked = !Boolean(blockedByUserId[r.id])
+                          await adminBlockUser(r.id, { isBlocked: nextIsBlocked, reason: null })
+                          setBlockedByUserId((prev) => ({ ...prev, [r.id]: nextIsBlocked }))
+                          toast.success('Cập nhật trạng thái user thành công.')
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Cập nhật trạng thái thất bại')
+                        } finally {
+                          setIsSubmitting(false)
+                        }
+                      }}
+                      className={[
+                        'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors',
+                        blockedByUserId[r.id]
+                          ? 'border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))]'
+                          : 'border-[rgb(var(--fe-success))] bg-[rgb(var(--fe-success))]',
+                        isSubmitting ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                      ].join(' ')}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={[
+                          'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
+                          blockedByUserId[r.id] ? 'translate-x-1' : 'translate-x-6',
+                        ].join(' ')}
+                      />
+                    </button>
+                  </div>
+                </Td>
+                <Td className="text-right">
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={isSubmitting || cafes.length === 0}
+                      onClick={async () => {
+                        setAssignUserId(r.id)
+                        setAssignCafeIds(savedCafeIdsByUserId[r.id] ?? [])
+                        setIsAssignModalOpen(true)
+                        setAssignCafeQuery('')
+                      }}
+                    >
+                      Gán thêm quán
+                    </Button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        </div>
 
       </Card>
     </div>

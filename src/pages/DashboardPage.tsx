@@ -4,8 +4,10 @@ import { Card } from '../components/ui/Card'
 import { Field } from '../components/ui/Field'
 import { Button } from '../components/ui/Button'
 import { useToast } from '../components/ui/Toast'
-import { getCafes, getMenuCategories, getMenuItems } from '../utils/api'
+import { CafeSelect } from '../components/ui/CafeSelect'
+import { getBrandCafes, getCafes, getMenuCategories, getMenuItems } from '../utils/api'
 import { useAuthContext } from '../components/auth/AuthProvider'
+import { getBrandCafesFromAccessToken } from '../utils/brandCafes'
 
 type CafeStats = {
   categoriesCount: number
@@ -25,7 +27,9 @@ export function DashboardPage() {
   async function refresh() {
     setIsLoading(true)
     try {
-      const data = await getCafes()
+      const data = auth.isAdmin
+        ? await getCafes()
+        : await getBrandCafes().catch(() => getBrandCafesFromAccessToken(localStorage.getItem('MENUFE_ACCESS_TOKEN')))
       setCafes(data)
       const nextCafeId = selectedCafeId ?? data[0]?.id ?? null
       setSelectedCafeId(nextCafeId)
@@ -81,10 +85,15 @@ export function DashboardPage() {
             <div className="text-base font-semibold text-[rgb(var(--fe-text))]">Chọn quán để xem số liệu</div>
             <div className="mt-4">
               <Field label="Quán">
-                <select
-                  value={selectedCafeId ?? ''}
-                  onChange={async (e) => {
-                    const cafeId = e.target.value ? String(e.target.value) : null
+                <CafeSelect
+                  label="Quán"
+                  showLabel={false}
+                  cafes={cafes}
+                  value={selectedCafeId}
+                  disabled={isLoading}
+                  placeholder="Chọn quán"
+                  emptyText="Chưa có quán"
+                  onChange={async (cafeId) => {
                     setSelectedCafeId(cafeId)
                     if (!cafeId) {
                       setStats(null)
@@ -100,17 +109,7 @@ export function DashboardPage() {
                       setIsLoading(false)
                     }
                   }}
-                  className="w-full rounded-(--fe-radius) border border-[rgb(var(--fe-line))] bg-white px-4 py-3 text-sm font-semibold text-[rgb(var(--fe-text))]"
-                >
-                  <option value="" disabled>
-                    -- Chọn quán --
-                  </option>
-                  {cafes.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </Field>
             </div>
           </div>

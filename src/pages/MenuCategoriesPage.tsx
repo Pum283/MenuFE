@@ -7,8 +7,20 @@ import { Button } from '../components/ui/Button'
 import { Table, Td, Th } from '../components/ui/Table'
 import { Modal } from '../components/ui/Modal'
 import { useToast } from '../components/ui/Toast'
+import { CafeSelect } from '../components/ui/CafeSelect'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { useAuthContext } from '../components/auth/AuthProvider'
+import { getBrandCafesFromAccessToken } from '../utils/brandCafes'
+import { getAdminLang } from '../constants/lang'
 import { STORAGE_KEYS } from '../constants/storageKeys'
-import { createMenuCategory, deleteMenuCategory, getCafes, getMenuCategoriesByLang, updateMenuCategory } from '../utils/api'
+import {
+  createMenuCategory,
+  deleteMenuCategory,
+  getBrandCafes,
+  getCafes,
+  getMenuCategoriesByLang,
+  updateMenuCategory,
+} from '../utils/api'
 
 type CategoryForm = {
   id: string | null
@@ -36,12 +48,14 @@ function categoryToForm(cVi?: MenuCategoryDto, cEn?: MenuCategoryDto): CategoryF
 
 export function MenuCategoriesPage() {
   const toast = useToast()
+  const auth = useAuthContext()
 
   const [cafes, setCafes] = useState<CafeDto[]>([])
   const [selectedCafeId, setSelectedCafeId] = useState<string>('')
   const [categories, setCategories] = useState<MenuCategoryDto[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] = useState<string | null>(null)
 
   const [categoryForm, setCategoryForm] = useState<CategoryForm>(() => categoryToForm())
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
@@ -57,13 +71,45 @@ export function MenuCategoriesPage() {
   )
 
   async function refreshCafes() {
-    const data = await getCafes()
+    const data = auth.isAdmin
+      ? await getCafes()
+      : await getBrandCafes().catch(() => getBrandCafesFromAccessToken(localStorage.getItem('MENUFE_ACCESS_TOKEN')))
     setCafes(data)
   }
 
   async function refreshCategories(cafeId: string) {
-    const data = await getMenuCategoriesByLang(cafeId, 'vi')
+    const data = await getMenuCategoriesByLang(cafeId, getAdminLang())
     setCategories(data)
+  }
+
+  async function toggleCategoryStatus(categoryId: string, nextIsActive: boolean) {
+    if (!selectedCafeId.trim()) return
+    setIsSubmitting(true)
+    try {
+      const [viList, enList] = await Promise.all([getMenuCategoriesByLang(selectedCafeId, 'vi'), getMenuCategoriesByLang(selectedCafeId, 'en')])
+      const vi = viList.find((x) => x.id === categoryId)
+      const en = enList.find((x) => x.id === categoryId)
+      if (!vi || !en) {
+        toast.error('Không tìm thấy dữ liệu danh mục (VI/EN).')
+        return
+      }
+
+      await updateMenuCategory(selectedCafeId, categoryId, {
+        slug: vi.slug,
+        translations: {
+          vi: { name: vi.name, description: vi.description ?? null },
+          en: { name: en.name, description: en.description ?? null },
+        },
+        displayOrder: vi.displayOrder,
+        isActive: nextIsActive,
+      })
+      toast.success('Cập nhật trạng thái danh mục thành công.')
+      await refreshCategories(selectedCafeId)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Cập nhật trạng thái thất bại')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   useEffect(() => {
@@ -98,8 +144,6 @@ export function MenuCategoriesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCafeId])
 
-  const selectedCafe = useMemo(() => cafes.find((c) => c.id === selectedCafeId) ?? null, [cafes, selectedCafeId])
-
   return (
     <div className="space-y-6">
       <Card
@@ -128,23 +172,40 @@ export function MenuCategoriesPage() {
           ) : null
         }
       >
+        <ConfirmDialog
+          title="Xác nhận xoá"
+          description="Thao tác này sẽ xoá danh mục và không thể hoàn tác."
+          isOpen={Boolean(confirmDeleteCategoryId)}
+          isConfirming={isSubmitting}
+          onCancel={() => setConfirmDeleteCategoryId(null)}
+          onConfirm={async () => {
+            if (!confirmDeleteCategoryId || !selectedCafeId) return
+            setIsSubmitting(true)
+            try {
+              await deleteMenuCategory(selectedCafeId, confirmDeleteCategoryId)
+              toast.success('Xoá danh mục thành công.')
+              setConfirmDeleteCategoryId(null)
+              await refreshCategories(selectedCafeId)
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : 'Xoá danh mục thất bại')
+            } finally {
+              setIsSubmitting(false)
+            }
+          }}
+        />
         <div className="rounded-(--fe-radius) border border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))] p-4">
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Chọn quán">
-              <select
-                value={selectedCafeId}
-                onChange={(e) => setSelectedCafeId(e.target.value ? String(e.target.value) : '')}
-                className="w-full rounded-(--fe-radius) border border-[rgb(var(--fe-line))] bg-white px-4 py-3 text-sm font-semibold text-[rgb(var(--fe-text))]"
-              >
-                <option value="" disabled>
-                  -- Chọn quán --
-                </option>
-                {cafes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              <CafeSelect
+                label="Chọn quán"
+                showLabel={false}
+                cafes={cafes}
+                value={selectedCafeId.trim() ? selectedCafeId : null}
+                disabled={isLoading}
+                placeholder="Chọn quán"
+                emptyText="Chưa có quán"
+                onChange={(nextCafeId) => setSelectedCafeId(nextCafeId ?? '')}
+              />
             </Field>
 
             <div className="flex items-end justify-end">
@@ -160,11 +221,6 @@ export function MenuCategoriesPage() {
               </Button>
             </div>
           </div>
-          {selectedCafe ? (
-            <div className="mt-2 text-xs font-semibold text-[rgb(var(--fe-muted))]">
-              Đang xem: {selectedCafe.name} ({selectedCafe.code})
-            </div>
-          ) : null}
         </div>
 
         <Modal
@@ -288,80 +344,189 @@ export function MenuCategoriesPage() {
           <div className="mt-4 text-sm font-semibold text-[rgb(var(--fe-muted))]">Vui lòng chọn quán để xem danh mục.</div>
         ) : (
           <div className="mt-4">
-            <Table
-              header={
-                <tr>
-                  <Th>Slug</Th>
-                  <Th>Tên</Th>
-                  <Th>Order</Th>
-                  <Th className="w-32 whitespace-nowrap">Trạng thái</Th>
-                  <Th className="text-right">Hành động</Th>
-                </tr>
-              }
-            >
+            <div className="md:hidden">
               {categories.length === 0 ? (
-                <tr>
-                  <Td colSpan={5}>Chưa có danh mục.</Td>
-                </tr>
-              ) : null}
+                <div className="rounded-(--fe-radius) border border-[rgb(var(--fe-line))] bg-white p-4 text-sm font-semibold text-[rgb(var(--fe-muted))]">
+                  Chưa có danh mục.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {categories.map((c) => (
+                    <div key={c.id} className="rounded-(--fe-radius) border border-[rgb(var(--fe-line))] bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-[rgb(var(--fe-text))]">{c.name}</div>
+                          <div className="mt-1 truncate text-xs font-semibold text-[rgb(var(--fe-muted))]">{c.slug}</div>
+                        </div>
+                        <div
+                          className={[
+                            'shrink-0 rounded-[calc(var(--fe-radius)+999px)] border px-3 py-1 text-xs font-semibold',
+                            c.isActive
+                              ? 'border-[rgb(var(--fe-success))] bg-[rgba(var(--fe-success),0.10)] text-[rgb(var(--fe-success))]'
+                              : 'border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))] text-[rgb(var(--fe-muted))]',
+                          ].join(' ')}
+                        >
+                          {c.isActive ? 'Active' : 'Inactive'}
+                        </div>
+                      </div>
 
-              {categories.map((c) => (
-                <tr key={c.id} className="hover:bg-[rgb(var(--fe-surface))]">
-                  <Td>{c.slug}</Td>
-                  <Td>{c.name}</Td>
-                  <Td>{c.displayOrder}</Td>
-                  <Td>{c.isActive ? 'Active' : 'Inactive'}</Td>
-                  <Td className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={async () => {
-                          if (!selectedCafeId.trim()) return
-                          setIsSubmitting(true)
-                          try {
-                            const [viList, enList] = await Promise.all([
-                              getMenuCategoriesByLang(selectedCafeId, 'vi'),
-                              getMenuCategoriesByLang(selectedCafeId, 'en'),
-                            ])
-                            const vi = viList.find((x) => x.id === c.id)
-                            const en = enList.find((x) => x.id === c.id)
-                            setCategoryForm(categoryToForm(vi, en))
-                            setIsCategoryModalOpen(true)
-                          } catch (err) {
-                            toast.error(err instanceof Error ? err.message : 'Tải dữ liệu song ngữ thất bại')
-                          } finally {
-                            setIsSubmitting(false)
-                          }
-                        }}
-                      >
-                        Chỉnh sửa
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="danger"
-                        disabled={isSubmitting || !selectedCafeId}
-                        onClick={async () => {
-                          if (!selectedCafeId) return
-                          setIsSubmitting(true)
-                          try {
-                            await deleteMenuCategory(selectedCafeId, c.id)
-                            toast.success('Xoá danh mục thành công.')
-                            await refreshCategories(selectedCafeId)
-                          } catch (err) {
-                            toast.error(err instanceof Error ? err.message : 'Xoá danh mục thất bại')
-                          } finally {
-                            setIsSubmitting(false)
-                          }
-                        }}
-                      >
-                        Xoá
-                      </Button>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <div className="text-xs font-semibold text-[rgb(var(--fe-muted))]">Order</div>
+                        <div className="text-xs font-semibold text-[rgb(var(--fe-text))]">{c.displayOrder}</div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={c.isActive}
+                          disabled={isSubmitting}
+                          onClick={() => void toggleCategoryStatus(c.id, !c.isActive)}
+                          className={[
+                            'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors',
+                            c.isActive
+                              ? 'border-[rgb(var(--fe-success))] bg-[rgb(var(--fe-success))]'
+                              : 'border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))]',
+                            isSubmitting ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                          ].join(' ')}
+                          aria-label="Trạng thái"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={[
+                              'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
+                              c.isActive ? 'translate-x-6' : 'translate-x-1',
+                            ].join(' ')}
+                          />
+                        </button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={isSubmitting}
+                          onClick={async () => {
+                            if (!selectedCafeId.trim()) return
+                            setIsSubmitting(true)
+                            try {
+                              const [viList, enList] = await Promise.all([
+                                getMenuCategoriesByLang(selectedCafeId, 'vi'),
+                                getMenuCategoriesByLang(selectedCafeId, 'en'),
+                              ])
+                              const vi = viList.find((x) => x.id === c.id)
+                              const en = enList.find((x) => x.id === c.id)
+                              setCategoryForm(categoryToForm(vi, en))
+                              setIsCategoryModalOpen(true)
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : 'Tải dữ liệu song ngữ thất bại')
+                            } finally {
+                              setIsSubmitting(false)
+                            }
+                          }}
+                        >
+                          Chỉnh sửa
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          disabled={isSubmitting || !selectedCafeId}
+                          onClick={() => setConfirmDeleteCategoryId(c.id)}
+                        >
+                          Xoá
+                        </Button>
+                      </div>
                     </div>
-                  </Td>
-                </tr>
-              ))}
-            </Table>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="hidden md:block">
+              <Table
+                header={
+                  <tr>
+                    <Th>Slug</Th>
+                    <Th>Tên</Th>
+                    <Th>Order</Th>
+                    <Th className="w-32 whitespace-nowrap">Trạng thái</Th>
+                    <Th className="text-right">Hành động</Th>
+                  </tr>
+                }
+              >
+                {categories.length === 0 ? (
+                  <tr>
+                    <Td colSpan={5}>Chưa có danh mục.</Td>
+                  </tr>
+                ) : null}
+
+                {categories.map((c) => (
+                  <tr key={c.id} className="hover:bg-[rgb(var(--fe-surface))]">
+                    <Td>{c.slug}</Td>
+                    <Td>{c.name}</Td>
+                    <Td>{c.displayOrder}</Td>
+                    <Td>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={c.isActive}
+                        disabled={isSubmitting}
+                        onClick={() => void toggleCategoryStatus(c.id, !c.isActive)}
+                        className={[
+                          'relative inline-flex h-7 w-12 items-center rounded-full border transition-colors',
+                          c.isActive
+                            ? 'border-[rgb(var(--fe-success))] bg-[rgb(var(--fe-success))]'
+                            : 'border-[rgb(var(--fe-line))] bg-[rgb(var(--fe-surface))]',
+                          isSubmitting ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                        ].join(' ')}
+                        aria-label="Trạng thái"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={[
+                            'inline-block h-5 w-5 transform rounded-full bg-white transition-transform',
+                            c.isActive ? 'translate-x-6' : 'translate-x-1',
+                          ].join(' ')}
+                        />
+                      </button>
+                    </Td>
+                    <Td className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={async () => {
+                            if (!selectedCafeId.trim()) return
+                            setIsSubmitting(true)
+                            try {
+                              const [viList, enList] = await Promise.all([
+                                getMenuCategoriesByLang(selectedCafeId, 'vi'),
+                                getMenuCategoriesByLang(selectedCafeId, 'en'),
+                              ])
+                              const vi = viList.find((x) => x.id === c.id)
+                              const en = enList.find((x) => x.id === c.id)
+                              setCategoryForm(categoryToForm(vi, en))
+                              setIsCategoryModalOpen(true)
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : 'Tải dữ liệu song ngữ thất bại')
+                            } finally {
+                              setIsSubmitting(false)
+                            }
+                          }}
+                        >
+                          Chỉnh sửa
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          disabled={isSubmitting || !selectedCafeId}
+                          onClick={() => setConfirmDeleteCategoryId(c.id)}
+                        >
+                          Xoá
+                        </Button>
+                      </div>
+                    </Td>
+                  </tr>
+                ))}
+              </Table>
+            </div>
           </div>
         )}
       </Card>
